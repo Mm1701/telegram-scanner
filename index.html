@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="vi">
 
@@ -12,15 +13,28 @@
 
     <title>CloudMES Scanner</title>
 
-    <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+
+    <!-- =====================================================
+         TELEGRAM WEB APP
+    ====================================================== -->
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+
+    <!-- =====================================================
+         ZXING
+         QR CODE + DATA MATRIX
+    ====================================================== -->
 
     <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+
 
     <style>
 
         * {
             box-sizing: border-box;
         }
+
 
         html,
         body {
@@ -53,12 +67,16 @@
         }
 
 
+        /* =====================================================
+           HEADER
+        ====================================================== */
+
         .header {
 
             padding:
                 calc(12px + env(safe-area-inset-top))
                 16px
-                12px;
+                8px;
 
             text-align: center;
 
@@ -81,6 +99,10 @@
 
         }
 
+
+        /* =====================================================
+           SCANNER
+        ====================================================== */
 
         .scanner {
 
@@ -111,6 +133,10 @@
 
         }
 
+
+        /* =====================================================
+           SCAN FRAME
+        ====================================================== */
 
         .scan-frame {
 
@@ -177,6 +203,10 @@
         }
 
 
+        /* =====================================================
+           STATUS
+        ====================================================== */
+
         .status {
 
             padding: 14px;
@@ -187,8 +217,21 @@
 
             font-size: 14px;
 
+            min-height: 48px;
+
         }
 
+
+        .error {
+
+            color: #ff6b6b;
+
+        }
+
+
+        /* =====================================================
+           RESULT
+        ====================================================== */
 
         .result {
 
@@ -227,6 +270,10 @@
         }
 
 
+        /* =====================================================
+           BUTTON
+        ====================================================== */
+
         button {
 
             margin-top: 12px;
@@ -247,12 +294,14 @@
 
             color: white;
 
+            cursor: pointer;
+
         }
 
 
-        .error {
+        button:active {
 
-            color: #ff6b6b;
+            transform: scale(0.98);
 
         }
 
@@ -263,6 +312,10 @@
 
 <body>
 
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
 
     <div class="header">
 
@@ -277,6 +330,10 @@
 
     </div>
 
+
+    <!-- =====================================================
+         CAMERA
+    ====================================================== -->
 
     <div
         id="scanner"
@@ -300,6 +357,10 @@
     </div>
 
 
+    <!-- =====================================================
+         STATUS
+    ====================================================== -->
+
     <div
         id="status"
         class="status"
@@ -309,6 +370,10 @@
 
     </div>
 
+
+    <!-- =====================================================
+         RESULT
+    ====================================================== -->
 
     <div
         id="result"
@@ -330,6 +395,7 @@
 
         <button
             id="rescan"
+            type="button"
         >
 
             🔄 Quét lại
@@ -344,14 +410,27 @@
 "use strict";
 
 
+/* =========================================================
+   TELEGRAM
+========================================================= */
+
 const tg =
+    window.Telegram &&
     window.Telegram.WebApp;
 
 
-tg.ready();
+if (tg) {
 
-tg.expand();
+    tg.ready();
 
+    tg.expand();
+
+}
+
+
+/* =========================================================
+   DOM
+========================================================= */
 
 const video =
     document.getElementById(
@@ -389,6 +468,10 @@ const rescanBtn =
     );
 
 
+/* =========================================================
+   VARIABLES
+========================================================= */
+
 let codeReader =
     null;
 
@@ -397,14 +480,17 @@ let controls =
     null;
 
 
-let scanning =
-    false;
-
-
 let sent =
     false;
 
 
+let scanning =
+    false;
+
+
+/* =========================================================
+   STATUS
+========================================================= */
 
 function setStatus(
     text,
@@ -414,6 +500,7 @@ function setStatus(
     statusEl.textContent =
         text;
 
+
     statusEl.classList.toggle(
         "error",
         error
@@ -422,6 +509,204 @@ function setStatus(
 }
 
 
+/* =========================================================
+   CHECK ZXING
+========================================================= */
+
+function checkZXing() {
+
+    if (
+        typeof ZXingBrowser ===
+        "undefined"
+    ) {
+
+        console.error(
+            "[CloudMES Scanner] ZXingBrowser NOT FOUND"
+        );
+
+
+        setStatus(
+            "❌ Không tải được thư viện ZXing.",
+            true
+        );
+
+
+        return false;
+
+    }
+
+
+    console.log(
+        "[CloudMES Scanner] ZXingBrowser OK"
+    );
+
+
+    return true;
+
+}
+
+
+/* =========================================================
+   STOP CAMERA
+========================================================= */
+
+function stopScanner() {
+
+    scanning =
+        false;
+
+
+    if (controls) {
+
+        try {
+
+            controls.stop();
+
+        }
+        catch (error) {
+
+            console.warn(
+                "[CloudMES Scanner] Stop error:",
+                error
+            );
+
+        }
+
+
+        controls =
+            null;
+
+    }
+
+
+    /*
+     * Dừng toàn bộ camera stream
+     */
+
+    if (
+        video.srcObject
+    ) {
+
+        try {
+
+            const tracks =
+                video
+                    .srcObject
+                    .getTracks();
+
+
+            tracks.forEach(
+                track => {
+
+                    try {
+
+                        track.stop();
+
+                    }
+                    catch (e) {}
+
+                }
+            );
+
+        }
+        catch (error) {
+
+            console.warn(
+                "[CloudMES Scanner] Camera stop error:",
+                error
+            );
+
+        }
+
+
+        video.srcObject =
+            null;
+
+    }
+
+}
+
+
+/* =========================================================
+   FIND BACK CAMERA
+========================================================= */
+
+async function getCameraDevice() {
+
+    const devices =
+        await ZXingBrowser
+            .BrowserCodeReader
+            .listVideoInputDevices();
+
+
+    if (
+        !devices ||
+        devices.length === 0
+    ) {
+
+        throw new Error(
+            "Không tìm thấy camera"
+        );
+
+    }
+
+
+    console.log(
+        "[CloudMES Scanner] Cameras:",
+        devices
+    );
+
+
+    /*
+     * Ưu tiên camera sau
+     */
+
+    const backCamera =
+        devices.find(
+            device => {
+
+                const label =
+                    String(
+                        device.label ||
+                        ""
+                    ).toLowerCase();
+
+
+                return (
+                    label.includes("back") ||
+                    label.includes("rear") ||
+                    label.includes("environment") ||
+                    label.includes("trailing")
+                );
+
+            }
+        );
+
+
+    if (backCamera) {
+
+        return backCamera.deviceId;
+
+    }
+
+
+    /*
+     * Nếu chưa có label
+     * dùng camera cuối cùng
+     */
+
+    return (
+        devices[
+            devices.length - 1
+        ].deviceId
+    );
+
+}
+
+
+/* =========================================================
+   START SCANNER
+========================================================= */
 
 async function startScanner() {
 
@@ -442,60 +727,32 @@ async function startScanner() {
     );
 
 
+    if (
+        !checkZXing()
+    ) {
+
+        return;
+
+    }
+
+
     try {
 
+        /*
+         * Tạo ZXing reader
+         */
+
         codeReader =
-            new ZXingBrowser.BrowserMultiFormatReader();
+            new ZXingBrowser
+                .BrowserMultiFormatReader();
 
 
-        const devices =
-            await ZXingBrowser.BrowserCodeReader
-                .listVideoInputDevices();
+        /*
+         * Tìm camera
+         */
 
-
-        if (
-            !devices ||
-            devices.length === 0
-        ) {
-
-            throw new Error(
-                "Không tìm thấy camera"
-            );
-
-        }
-
-
-        let deviceId =
-            devices[0].deviceId;
-
-
-        const backCamera =
-            devices.find(
-                device => {
-
-                    const label =
-                        (
-                            device.label ||
-                            ""
-                        ).toLowerCase();
-
-
-                    return (
-                        label.includes("back") ||
-                        label.includes("rear") ||
-                        label.includes("environment")
-                    );
-
-                }
-            );
-
-
-        if (backCamera) {
-
-            deviceId =
-                backCamera.deviceId;
-
-        }
+        const deviceId =
+            await getCameraDevice();
 
 
         setStatus(
@@ -503,51 +760,105 @@ async function startScanner() {
         );
 
 
+        /*
+         * Bắt đầu decode
+         *
+         * BrowserMultiFormatReader hỗ trợ
+         * nhiều loại barcode, gồm QR và Data Matrix.
+         */
+
         controls =
-            await codeReader.decodeFromVideoDevice(
+            await codeReader
+                .decodeFromVideoDevice(
 
-                deviceId,
+                    deviceId,
 
-                video,
+                    video,
 
-                (
-                    result,
-                    error
-                ) => {
+                    (
+                        result,
+                        error
+                    ) => {
 
-                    if (
-                        result &&
-                        !sent
-                    ) {
+                        /*
+                         * Có kết quả
+                         */
 
-                        handleScan(
-                            result.getText()
-                        );
+                        if (
+                            result &&
+                            !sent
+                        ) {
+
+                            const value =
+                                result.getText();
+
+
+                            handleScan(
+                                value
+                            );
+
+                        }
 
                     }
 
-                }
-
-            );
+                );
 
 
         scanning =
             true;
 
+
+        console.log(
+            "[CloudMES Scanner] Camera started"
+        );
+
     }
     catch (error) {
 
         console.error(
+            "[CloudMES Scanner] Camera ERROR:",
             error
         );
 
 
+        let message =
+            error?.message ||
+            String(error);
+
+
+        /*
+         * Camera permission
+         */
+
+        if (
+            error?.name ===
+            "NotAllowedError"
+        ) {
+
+            message =
+                "Camera bị từ chối quyền truy cập.";
+
+        }
+
+
+        /*
+         * Không tìm thấy camera
+         */
+
+        if (
+            error?.name ===
+            "NotFoundError"
+        ) {
+
+            message =
+                "Không tìm thấy camera.";
+
+        }
+
+
         setStatus(
             "❌ Không mở được camera: " +
-            (
-                error.message ||
-                error
-            ),
+            message,
             true
         );
 
@@ -556,6 +867,9 @@ async function startScanner() {
 }
 
 
+/* =========================================================
+   HANDLE SCAN
+========================================================= */
 
 function handleScan(
     value
@@ -571,17 +885,31 @@ function handleScan(
     }
 
 
+    value =
+        String(
+            value
+        ).trim();
+
+
+    if (!value) {
+
+        return;
+
+    }
+
+
     sent =
         true;
 
 
-    value =
-        String(value).trim();
+    console.log(
+        "[CloudMES Scanner] SCAN:",
+        value
+    );
 
 
     setStatus(
-        "✅ Đã quét: " +
-        value
+        "✅ Đã quét thành công"
     );
 
 
@@ -597,88 +925,184 @@ function handleScan(
         "block";
 
 
-    if (controls) {
+    /*
+     * Dừng camera
+     */
 
-        try {
+    stopScanner();
 
-            controls.stop();
 
-        }
-        catch (e) {
+    /*
+     * Gửi dữ liệu về Telegram
+     */
 
-            console.warn(e);
+    if (!tg) {
 
-        }
+        setStatus(
+            "❌ Telegram WebApp không khả dụng.",
+            true
+        );
+
+        return;
 
     }
 
 
-    /*
-     * Gửi mã về Telegram Bot
-     */
+    try {
 
-    tg.sendData(
-        JSON.stringify({
+        tg.sendData(
 
-            type:
-                "scan",
+            JSON.stringify({
 
-            value:
-                value
+                type:
+                    "scan",
 
-        })
-    );
+                value:
+                    value
+
+            })
+
+        );
 
 
-    /*
-     * Cho Telegram đóng Mini App
-     */
+        console.log(
+            "[CloudMES Scanner] Data sent to Telegram"
+        );
 
-    setTimeout(
-        () => {
+    }
+    catch (error) {
 
-            try {
+        console.error(
+            "[CloudMES Scanner] sendData ERROR:",
+            error
+        );
 
-                tg.close();
 
-            }
-            catch (e) {}
+        setStatus(
+            "❌ Không gửi được dữ liệu về Telegram.",
+            true
+        );
 
-        },
-        300
-    );
+        sent =
+            false;
+
+    }
 
 }
 
 
+/* =========================================================
+   RESCAN
+========================================================= */
 
 rescanBtn.addEventListener(
     "click",
-    () => {
+    async () => {
 
-        if (controls) {
-
-            try {
-
-                controls.stop();
-
-            }
-            catch (e) {}
-
-        }
+        stopScanner();
 
 
-        startScanner();
+        await startScanner();
 
     }
 );
 
 
-startScanner();
+/* =========================================================
+   PAGE HIDDEN
+========================================================= */
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+
+        if (
+            document.hidden
+        ) {
+
+            stopScanner();
+
+        }
+
+    }
+);
+
+
+/* =========================================================
+   PAGE UNLOAD
+========================================================= */
+
+window.addEventListener(
+    "beforeunload",
+    () => {
+
+        stopScanner();
+
+    }
+);
+
+
+/* =========================================================
+   START
+========================================================= */
+
+(async function () {
+
+    console.log(
+        "======================================"
+    );
+
+
+    console.log(
+        "[CloudMES Scanner] START"
+    );
+
+
+    console.log(
+        "ZXingBrowser:",
+        typeof ZXingBrowser
+    );
+
+
+    console.log(
+        "Telegram WebApp:",
+        typeof Telegram
+    );
+
+
+    console.log(
+        "======================================"
+    );
+
+
+    if (
+        !checkZXing()
+    ) {
+
+        return;
+
+    }
+
+
+    if (!tg) {
+
+        setStatus(
+            "❌ Không chạy trong Telegram WebApp.",
+            true
+        );
+
+        return;
+
+    }
+
+
+    await startScanner();
+
+})();
 
 </script>
-
 
 </body>
 
 </html>
+```
